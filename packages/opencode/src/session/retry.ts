@@ -29,6 +29,7 @@ export const RETRY_JITTER_FACTOR = 0.25
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
 export const RETRY_MAX_RETRIES = 5
+export const FREE_LIMIT_WAIT_MS = 60000 // free-1min-ping: fixed 60s wait for free-tier limit, retry-after ignored
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   /429|500|502|503|504|524/i,
@@ -44,7 +45,15 @@ function cap(ms: number) {
   return Math.min(ms, RETRY_MAX_DELAY)
 }
 
+export function isFreeLimitError(error: Err | SessionV1.APIError) {
+  if (SessionV1.APIError.isInstance(error)) return error.data.responseBody?.includes("FreeUsageLimitError") ?? false
+  const body = isRecord(error.data) ? error.data["responseBody"] : undefined
+  return typeof body === "string" && body.includes("FreeUsageLimitError")
+}
+
 export function delay(attempt: number, error?: SessionV1.APIError, random = Math.random()) {
+  // free-1min-ping: free-tier limit always waits exactly 60s, retry-after headers ignored
+  if (error && isFreeLimitError(error)) return FREE_LIMIT_WAIT_MS
   if (error) {
     const headers = error.data.responseHeaders
     if (headers) {
@@ -190,7 +199,9 @@ export function policy(opts: {
       const error = opts.parse(meta.input)
       const retry = retryable(error, opts.provider)
       if (!retry) return Cause.done(meta.attempt)
-      if (meta.attempt > RETRY_MAX_RETRIES) return Cause.done(meta.attempt)
+      // free-1min-ping: free-tier limit retries forever until success/abort, no RETRY_MAX_RETRIES cap.
+      // Abort/interrupt propagates via the Effect runtime without retry (schedule delays are interruptible).
+      if (!isFreeLimitError(error) && meta.attempt > RETRY_MAX_RETRIES) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
         const wait = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
         const now = yield* Clock.currentTimeMillis

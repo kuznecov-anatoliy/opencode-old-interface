@@ -4,7 +4,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { NamedError } from "@opencode-ai/core/util/error"
 import { APICallError } from "ai"
 import { setTimeout as sleep } from "node:timers/promises"
-import { Effect, Schedule, Schema } from "effect"
+import { Clock, Effect, Fiber, Schedule, Schema } from "effect"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -30,6 +30,21 @@ function apiError(headers?: Record<string, string>): SessionV1.APIError {
 
 function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
   return { name: "", data: { message } }
+}
+
+function freeError(headers?: Record<string, string>) {
+  return Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+    new SessionV1.APIError({
+      message: "Free usage exceeded",
+      isRetryable: true,
+      statusCode: 429,
+      responseHeaders: headers,
+      responseBody: JSON.stringify({
+        type: "error",
+        error: { type: "FreeUsageLimitError", message: "Free usage exceeded" },
+      }),
+    }).toObject(),
+  )
 }
 
 describe("session.retry.delay", () => {
@@ -144,6 +159,105 @@ describe("session.retry.delay", () => {
       )
 
       expect(attempts).toStrictEqual([1, 2, 3, 4, 5])
+    }),
+  )
+
+  it.instance("free limit waits exactly 60s with unlimited retries and stays interruptible", () =>
+    Effect.gen(function* () {
+      // free-1min-ping: fixed 60s, retry-after headers ignored, no real 60s wait here
+      expect(SessionRetry.FREE_LIMIT_WAIT_MS).toBe(60000)
+      const free = freeError({ "retry-after": "5", "retry-after-ms": "1000" })
+      expect(SessionRetry.delay(1, free)).toBe(60000)
+      expect(SessionRetry.delay(9, free, 1)).toBe(60000)
+
+      const attempts: number[] = []
+      const nexts: number[] = []
+      const step = yield* Schedule.toStepWithMetadata(
+        SessionRetry.policy({
+          provider: "test",
+          parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+          set: (info) =>
+            Effect.sync(() => {
+              attempts.push(info.attempt)
+              nexts.push(info.next)
+            }),
+        }),
+      )
+
+      // A step that keeps retrying really sleeps its duration, so race it
+      // against a short timeout to prove the retry decision without waiting.
+      // The loser is interrupted. set() runs before the sleep, so next is recorded.
+      const raced = Effect.race(
+        Effect.as(Effect.ignore(step(free)), "done" as const),
+        Effect.as(Effect.sleep(100), "waiting" as const),
+      )
+
+      // policy sleep duration is exactly 60s (next = now + 60000), without waiting
+      const before = yield* Clock.currentTimeMillis
+      expect(yield* raced).toBe("waiting")
+      const after = yield* Clock.currentTimeMillis
+      expect(nexts).toHaveLength(1)
+      expect(nexts[0] - before).toBeGreaterThanOrEqual(60000)
+      expect(nexts[0] - after).toBeLessThanOrEqual(60000)
+
+      // attempts beyond the old non-free cap still retry
+      yield* Effect.forEach(Array.from({ length: SessionRetry.RETRY_MAX_RETRIES }), () =>
+        Effect.map(
+          Effect.race(
+            Effect.as(Effect.ignore(step(free)), "done" as const),
+            Effect.as(Effect.sleep(100), "waiting" as const),
+          ),
+          (outcome) => expect(outcome).toBe("waiting"),
+        ),
+      )
+      expect(attempts).toStrictEqual([1, 2, 3, 4, 5, 6])
+
+      // negative: cap for non-free errors is still alive (6th step finishes at once)
+      const capped: number[] = []
+      const plain = apiError({ "retry-after-ms": "0" })
+      const cappedStep = yield* Schedule.toStepWithMetadata(
+        SessionRetry.policy({
+          provider: "test",
+          parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+          set: (info) =>
+            Effect.sync(() => {
+              capped.push(info.attempt)
+            }),
+        }),
+      )
+      yield* Effect.forEach(Array.from({ length: SessionRetry.RETRY_MAX_RETRIES }), () =>
+        Effect.ignore(cappedStep(plain)),
+      )
+      expect(
+        yield* Effect.race(
+          Effect.as(Effect.ignore(cappedStep(plain)), "done" as const),
+          Effect.as(Effect.sleep(100), "waiting" as const),
+        ),
+      ).toBe("done")
+      expect(capped).toStrictEqual([1, 2, 3, 4, 5])
+
+      // abort: interrupting a free-limit retry stops it promptly without waiting 60s
+      const aborted: number[] = []
+      const abortable = Effect.fail(free).pipe(
+        Effect.retry(
+          SessionRetry.policy({
+            provider: "test",
+            parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+            set: (info) =>
+              Effect.sync(() => {
+                aborted.push(info.attempt)
+              }),
+          }),
+        ),
+      )
+      const fiber = yield* Effect.forkScoped(abortable)
+      yield* Effect.sleep(200)
+      const interruptStart = yield* Clock.currentTimeMillis
+      yield* Fiber.interrupt(fiber)
+      const interruptEnd = yield* Clock.currentTimeMillis
+      yield* Effect.sleep(300)
+      expect(aborted).toStrictEqual([1])
+      expect(interruptEnd - interruptStart).toBeLessThan(10000)
     }),
   )
 })
