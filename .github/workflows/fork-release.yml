@@ -47,7 +47,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null
+          $raw = $null
+          try { $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null } catch {}
           if ($LASTEXITCODE -eq 0 -and $raw) {
             $rel = $raw | ConvertFrom-Json
             if ($rel.isDraft) {
