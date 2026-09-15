@@ -47,8 +47,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          $raw = $null
-          try { $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null } catch {}
+          $ErrorActionPreference = 'SilentlyContinue'
+          $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null
           if ($LASTEXITCODE -eq 0 -and $raw) {
             $rel = $raw | ConvertFrom-Json
             if ($rel.isDraft) {
@@ -57,6 +57,8 @@ jobs:
             } else {
               throw "Release $tag already exists (published). Bump the version."
             }
+          } else {
+            Write-Host "No existing release $tag found — proceeding."
           }
 
       - name: Setup Node 24
