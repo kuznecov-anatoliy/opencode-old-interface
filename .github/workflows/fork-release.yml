@@ -47,11 +47,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
-          $ErrorActionPreference = 'SilentlyContinue'
-          $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null
-          if ($LASTEXITCODE -eq 0 -and $raw) {
-            $rel = $raw | ConvertFrom-Json
-            if ($rel.isDraft) {
+          $apiPath = "repos/${{ github.repository }}/releases/tags/$tag"
+          $raw = gh api $apiPath --jq '.isDraft' 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $isDraft = ($raw -eq 'true')
+            if ($isDraft) {
               gh release delete $tag --repo "${{ github.repository }}" --yes
               Write-Host "Removed stale draft release $tag"
             } else {
