@@ -14,6 +14,14 @@
   <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
 </p>
 
+> [!WARNING]
+> **Unofficial fork.** This repository is a personal, non-commercial fork of
+> [opencode](https://github.com/anomalyco/opencode). It is **not affiliated with,
+> endorsed by, or supported by Anomaly or the OpenCode team**. It ships an unsigned
+> Windows desktop build with local patches (fixed 60s retry on free-tier limits,
+> extended legacy-interface availability) and serves its updates from this fork.
+> No warranty of any kind; keep this disclaimer in derivative builds.
+
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.zh.md">简体中文</a> |

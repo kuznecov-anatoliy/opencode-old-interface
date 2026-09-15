@@ -1,0 +1,195 @@
+name: fork-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (X.Y.Z, без ведущей v)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  windows-desktop:
+    if: github.repository == 'kuznecov-anatoliy/opencode-old-interface'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0 (SHA как в upstream)
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate version
+        id: version
+        run: |
+          $v = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
+          $v = $v.Trim()
+          if ($v.StartsWith("v")) { $v = $v.Substring(1) }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$v' is not plain semver X.Y.Z" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Building OpenCode Old Interface $v"
+
+      - name: Ensure release does not exist (or clean stale draft)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $raw = gh release view $tag --repo "${{ github.repository }}" --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0 -and $raw) {
+            $rel = $raw | ConvertFrom-Json
+            if ($rel.isDraft) {
+              gh release delete $tag --repo "${{ github.repository }}" --yes
+              Write-Host "Removed stale draft release $tag"
+            } else {
+              throw "Release $tag already exists (published). Bump the version."
+            }
+          }
+
+      - name: Setup Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+
+      - name: "Setup Bun (packageManager: bun@1.3.14)"
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0 (SHA как в upstream)
+        with:
+          bun-version-file: package.json
+
+      - name: Locate bun cache
+        id: bun-cache
+        shell: bash
+        run: echo "dir=$(bun pm cache)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore bun cache
+        id: bun-restore
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ steps.bun-cache.outputs.dir }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Refresh setuptools (node-gyp/distutils)
+        continue-on-error: true
+        shell: bash
+        run: python -m pip install setuptools || python3 -m pip install setuptools || pip install setuptools || true
+
+      - name: Install dependencies
+        timeout-minutes: 20
+        run: bun install --linker hoisted --frozen-lockfile
+
+      - name: Save bun cache
+        if: steps.bun-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ steps.bun-cache.outputs.dir }}
+          key: ${{ steps.bun-restore.outputs.cache-primary-key }}
+
+      - name: Check bun.lock unchanged (strict)
+        run: |
+          $diff = git diff --name-only -- bun.lock
+          if ($diff) { throw "bun.lock changed during install: $diff" } else { Write-Host "bun.lock unchanged" }
+
+      - name: Verify free-ping patch (retry tests)
+        working-directory: packages/opencode
+        run: bun test test/session/retry.test.ts
+
+      - name: Prepare desktop (prebuild + version write)
+        working-directory: packages/desktop
+        env:
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
+          RUST_TARGET: x86_64-pc-windows-msvc
+        run: bun ./scripts/prepare.ts
+
+      - name: Build
+        working-directory: packages/desktop
+        timeout-minutes: 20
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
+        run: bun run build
+
+      - name: Package Windows NSIS (electron-builder must not publish)
+        working-directory: packages/desktop
+        timeout-minutes: 60
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          OPENCODE_CHANNEL: prod
+          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
+        run: bun run package:win -- --publish never
+        # эквивалент upstream-формы: bunx electron-builder --win --config electron-builder.config.ts --publish never
+
+      - name: Verify update feed, artifacts and hashes
+        working-directory: packages/desktop/dist
+        run: |
+          $ver = "${{ steps.version.outputs.version }}"
+          $update = Get-Content -Raw win-unpacked\resources\app-update.yml
+          if ($update -notmatch "(?m)^owner:\s*kuznecov-anatoliy\s*$") { throw "app-update.yml: unexpected owner`n$update" }
+          if ($update -notmatch "(?m)^repo:\s*opencode-old-interface\s*$") { throw "app-update.yml: unexpected repo`n$update" }
+          if ($update -notmatch "(?m)^channel:\s*latest\s*$") { throw "app-update.yml: unexpected channel`n$update" }
+          $latest = Get-Content -Raw latest.yml
+          if ($latest -notmatch ("(?m)^version:\s*" + [regex]::Escape($ver) + "\s*$")) { throw "latest.yml: version mismatch`n$latest" }
+          if ($latest -notmatch "(?m)^path:\s*opencode-desktop-win-x64\.exe\s*$") { throw "latest.yml: unexpected path`n$latest" }
+          $shas = [regex]::Matches($latest, "(?m)^\s*sha512:\s*(\S+)\s*$")
+          if ($shas.Count -lt 2) { throw "latest.yml: missing sha512 entries`n$latest" }
+          $expected = $shas[0].Groups[1].Value
+          $actual = [Convert]::ToBase64String([System.Security.Cryptography.SHA512]::Create().ComputeHash([System.IO.File]::ReadAllBytes("opencode-desktop-win-x64.exe")))
+          if ($actual -ne $expected) { throw "latest.yml sha512 does not match the installer" }
+          $exe = Get-Item opencode-desktop-win-x64.exe
+          $bmap = Get-Item opencode-desktop-win-x64.exe.blockmap
+          if (-not $bmap) { throw "blockmap not found" }
+          if ($exe.Length -lt 50MB) { throw "installer looks too small: $($exe.Length) bytes" }
+          # Проверка VersionInfo/ProductVersion
+          $verInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe.FullName)
+          if ($verInfo.ProductVersion -ne $ver) { throw "exe ProductVersion mismatch: $($verInfo.ProductVersion) != $ver" }
+          Write-Host "OK: $($exe.Name) = $($exe.Length) bytes; sha512 OK; $($bmap.Name); ProductVersion=$($verInfo.ProductVersion)"
+
+      - name: Create draft release with assets
+        working-directory: packages/desktop/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          gh release create $tag `
+            --repo "${{ github.repository }}" `
+            --title "OpenCode Old Interface $tag" `
+            --notes "Unofficial fork of OpenCode Desktop for Windows (x64), unsigned. Includes the fixed 60s free-tier retry and extended legacy interface; updates are served from this fork." `
+            --target "${{ github.sha }}" `
+            --draft `
+            opencode-desktop-win-x64.exe opencode-desktop-win-x64.exe.blockmap latest.yml
+
+      - name: Verify uploaded assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $expected = @('opencode-desktop-win-x64.exe', 'opencode-desktop-win-x64.exe.blockmap', 'latest.yml')
+          $have = @(gh release view $tag --repo "${{ github.repository }}" --json assets --jq '.assets[].name')
+          foreach ($n in $expected) { if ($have -notcontains $n) { throw "Missing asset $n in release $tag (have: $($have -join ', '))" } }
+          Write-Host "All 3 assets uploaded."
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          gh release edit $tag --repo "${{ github.repository }}" --draft=false --latest
+          $rel = gh release view $tag --repo "${{ github.repository }}" --json isDraft,assets | ConvertFrom-Json
+          if ($rel.isDraft) { throw "Release $tag is still a draft" }
+          if ($rel.assets.Count -ne 3) { throw "Expected 3 assets, got $($rel.assets.Count)" }
+          Write-Host "Published $tag as latest with 3 assets."
