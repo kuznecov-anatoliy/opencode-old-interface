@@ -22,6 +22,86 @@
 > extended legacy-interface availability) and serves its updates from this fork.
 > No warranty of any kind; keep this disclaimer in derivative builds.
 
+# OpenCode — old interface (legacy UI) build · unofficial fork
+
+> [!WARNING]
+> **Unofficial fork.** This repository is a personal, non-commercial fork of
+> [opencode](https://github.com/anomalyco/opencode). It is **not affiliated with,
+> endorsed by, or supported by Anomaly or the OpenCode team**. It ships an unsigned
+> Windows desktop build with local patches (fixed 60s retry on free-tier limits,
+> extended legacy-interface availability) and serves its updates from this fork.
+> No warranty of any kind; keep this disclaimer in derivative builds.
+
+## What is this?
+
+An unofficial Windows build of [OpenCode](https://github.com/anomalyco/opencode) that:
+
+- **Restores the old (legacy) UI** — OpenCode upstream removed the legacy interface on 2026-09-14 (`oldInterfaceSunset`). This build brings it back.
+- **Retries free-tier rate limits** — when you hit the free usage cap (`FreeUsageLimitError` / HTTP 429), the build automatically retries every 60 seconds with no cap on attempts.
+- **Auto-updates from this repository** — future updates are served directly from this fork. Download once and receive updates automatically.
+
+## Download & install
+
+**Latest release:** https://github.com/kuznecov-anatoliy/opencode-old-interface/releases/latest
+
+**Direct exe download:** https://github.com/kuznecov-anatoliy/opencode-old-interface/releases/latest/download/opencode-desktop-win-x64.exe
+
+### Steps
+
+1. Download the `.exe` file from the link above.
+2. Run it. Windows SmartScreen will show a warning because the build is unsigned — click **More info** → **Run anyway**.
+3. Done. All future updates will be downloaded automatically from this repository.
+
+## What's different from upstream
+
+| Feature | Upstream | This fork |
+|---------|----------|-----------|
+| Legacy UI | Removed 2026-09-14 (`oldInterfaceSunset`) | ✅ Restored |
+| Free-tier limits | Error + stop | ✅ Retry every 60s, no attempt cap |
+| Updates | Official releases only | ✅ Served from this repository |
+| Signing | Signed Windows build | ❌ Unsigned (SmartScreen warning) |
+
+## FAQ
+
+**Why did the interface change / where did the old UI go?**
+OpenCode upstream removed the legacy interface on September 14, 2026 via the `oldInterfaceSunset` flag. This fork restores it.
+
+**How do I get the old interface back?**
+Download and install this fork. The legacy UI is enabled by default.
+
+**What does this build do when I hit the free-tier limit (429 / FreeUsageLimitError)?**
+It automatically retries the request every 60 seconds. There is no limit on the number of retry attempts.
+
+**Is this official?**
+No. This is a personal, non-commercial fork. It is **not affiliated with, endorsed by, or supported by Anomaly or the OpenCode team**.
+
+**How does it update?**
+Updates are served directly from this GitHub repository. When a new release is published, the desktop app will download and install it automatically.
+
+**How do I go back to the official build?**
+Uninstall this build and download the official release from https://opencode.ai/download or the upstream GitHub releases.
+
+---
+Keywords: opencode old interface, opencode legacy UI, restore old interface, FreeUsageLimitError, free tier retry, rate limit 429.
+
+## По-русски
+
+**Что это?** Неофициальная Windows-сборка OpenCode, которая возвращает старый интерфейс и автоматически повторяет запросы при лимите бесплатных моделей.
+
+**Установка:**
+1. Скачайте `.exe` по ссылке выше.
+2. Запустите. Windows SmartScreen покажет предупреждение — нажмите **«Подробнее»** → **«Выполнить в любом случае»**.
+
+**Отличия от официальной сборки:**
+- Старый интерфейс OpenCode пропал (upstream отключил его 14.09.2026) — наша сборка возвращает его.
+- Лимит на бесплатных моделях: вместо ошибки повтор каждые 60 секунд без ограничения попыток.
+
+**Обновления** приходят автоматически из этого репозитория.
+
+**Внимание:** это неофициальная сборка. Не связана с командой OpenCode.
+
+---
+
 <p align="center">
   <a href="README.md">English</a> |
   <a href="README.zh.md">简体中文</a> |
