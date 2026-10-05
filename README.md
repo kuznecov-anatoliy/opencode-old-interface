@@ -43,7 +43,13 @@ An unofficial Windows build of [OpenCode](https://github.com/anomalyco/opencode)
 OpenCode upstream removed the legacy interface on September 14, 2026 via the `oldInterfaceSunset` flag. This fork restores it.
 
 **How do I get the old interface back?**
-Download and install this fork. The legacy UI is enabled by default.
+Download and install this fork. With an existing profile the legacy UI is used by default; on a brand-new profile there is currently no UI switcher — see the next item.
+
+**I installed it on a fresh profile and I see the NEW interface, with no way to switch.**
+Known issue. On a clean profile (no previous settings) the layout check falls back to the new interface, and because the build is considered not eligible for the switcher, no toggle is rendered at all. The legacy UI currently appears only if you already had a profile before installing this build, or if the layout setting was explicitly set to the legacy value. This is a real limitation of the current build, not a configuration step you are missing.
+
+**Why do the releases here jump from 1.x to 2.x?**
+Fork releases are numbered as the upstream version with the MAJOR digit bumped: upstream 1.18.33 → 2.18.33. Upstream stays in the 1.x line, this fork stays in the 2.x line, so the numbers can never collide and the version in the About screen instantly tells you whether you are running the fork or the official build. The only exception is v1.18.32, which was released before this rule.
 
 **What does this build do when I hit the free-tier limit (429 / FreeUsageLimitError)?**
 It automatically retries the request every 60 seconds. There is no limit on the number of retry attempts.
@@ -56,6 +62,9 @@ Updates are served directly from this GitHub repository. When a new release is p
 
 **How do I go back to the official build?**
 Uninstall this build and download the official release from https://opencode.ai/download or the upstream GitHub releases.
+
+**Anything else I should know?**
+The WSL/Linux installer path asks for a `--version` value that does not exist upstream. It is pre-existing and does not affect the Windows build. If a future upstream release changes the retry logic, the 60-second free-tier retry will have to be reworked rather than carried over.
 
 ---
 Keywords: opencode old interface, opencode legacy UI, restore old interface, FreeUsageLimitError, free tier retry, rate limit 429.
@@ -73,6 +82,10 @@ Keywords: opencode old interface, opencode legacy UI, restore old interface, Fre
 - Лимит на бесплатных моделях: вместо ошибки повтор каждые 60 секунд без ограничения попыток.
 
 **Обновления** приходят автоматически из этого репозитория.
+
+**Нумерация версий:** номер релиза форка — это версия апстрима с увеличенной MAJOR-цифрой (1.18.33 → 2.18.33). Апстрим остаётся в линии 1.x, форк — в 2.x, поэтому номера никогда не конфликтуют, а версия в «О программе» сразу показывает, что запущен форк. Исключение — v1.18.32, выпущенный до этого правила.
+
+**Известная особенность:** на чистом профиле форк показывает новый интерфейс и не показывает переключатель. Старый интерфейс сейчас получают только пользователи с уже существующим профилем.
 
 **Внимание:** это неофициальная сборка. Не связана с командой OpenCode.
 
