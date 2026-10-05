@@ -49,7 +49,7 @@ Download and install this fork. With an existing profile the legacy UI is used b
 Known issue. On a clean profile (no previous settings) the layout check falls back to the new interface, and because the build is considered not eligible for the switcher, no toggle is rendered at all. The legacy UI currently appears only if you already had a profile before installing this build, or if the layout setting was explicitly set to the legacy value. This is a real limitation of the current build, not a configuration step you are missing.
 
 **Why do the releases here jump from 1.x to 2.x?**
-Fork releases are numbered as the upstream version with the MAJOR digit bumped: upstream 1.18.33 → 2.18.33. Upstream stays in the 1.x line, this fork stays in the 2.x line, so the numbers can never collide and the version in the About screen instantly tells you whether you are running the fork or the official build. The only exception is v1.18.32, which was released before this rule.
+A fork release number is *derived* from the upstream version it is based on: the MAJOR digit is always upstream's MAJOR plus one, and the minor/patch digits are copied as-is. Upstream `1.18.33` → this fork `2.18.33`. Because the number is computed rather than picked by hand, it can never coincide with an upstream number by construction. One caveat: upstream also develops a **separate 2.x line** of its own (`v2.0.x`, a different rework that no longer contains the legacy interface) — this fork does not follow that line, so a `2.x` here does **not** mean "upstream 2.x", it only means "we are following the 1.x line where the old interface is still alive". The version in the About screen instantly tells you whether you are running the fork. The only release not following the rule is v1.18.32, which came out before it.
 
 **What does this build do when I hit the free-tier limit (429 / FreeUsageLimitError)?**
 It automatically retries the request every 60 seconds. There is no limit on the number of retry attempts.
@@ -83,7 +83,7 @@ Keywords: opencode old interface, opencode legacy UI, restore old interface, Fre
 
 **Обновления** приходят автоматически из этого репозитория.
 
-**Нумерация версий:** номер релиза форка — это версия апстрима с увеличенной MAJOR-цифрой (1.18.33 → 2.18.33). Апстрим остаётся в линии 1.x, форк — в 2.x, поэтому номера никогда не конфликтуют, а версия в «О программе» сразу показывает, что запущен форк. Исключение — v1.18.32, выпущенный до этого правила.
+**Нумерация версий:** номер релиза форка *выводится* из версии апстрима, на которой он основан: мажор всегда на единицу больше апстримного, minor и patch копируются как есть (апстрим 1.18.33 → форк 2.18.33). Номер считается по формуле, а не подбирается вручную, поэтому совпадение с апстримным номером невозможно по построению. Оговорка: у апстрима есть **собственная отдельная линия 2.x** (`v2.0.x` — другая переработка, где старого интерфейса уже нет), её форк не ведёт, поэтому наш `2.x` — это не «версия 2.x апстрима», а лишь «мы следуем за линией 1.x, где старый интерфейс ещё жив». Версия в «О программе» сразу показывает, что запущен форк. Исключение — v1.18.32, выпущенный до этого правила.
 
 **Известная особенность:** на чистом профиле форк показывает новый интерфейс и не показывает переключатель. Старый интерфейс сейчас получают только пользователи с уже существующим профилем.
 

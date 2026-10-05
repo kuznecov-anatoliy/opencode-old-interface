@@ -161,6 +161,24 @@ jobs:
           # Проверка VersionInfo/ProductVersion
           $verInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe.FullName)
           if ($verInfo.ProductVersion -ne $ver) { throw "exe ProductVersion mismatch: $($verInfo.ProductVersion) != $ver" }
+          # Проверка версии, запечённой в рендер-бандл (имя чанка с хешем меняется от сборки к сборке).
+          # Пробелы вокруг '=' допускаются: проверяем значение версии, а не формат минификатора.
+          $assets = Join-Path (Resolve-Path ..) "out\renderer\assets"
+          if (-not (Test-Path $assets)) {
+            Write-Warning "Renderer assets dir not found at $assets - skipping renderer version check (build output layout changed?)"
+          } else {
+            $chunks = @(Get-ChildItem -Path $assets -Filter *.js -File -ErrorAction SilentlyContinue)
+            if ($chunks.Count -eq 0) {
+              Write-Warning "No *.js chunks in $assets - skipping renderer version check (build output layout changed?)"
+            } else {
+              $baked = @(Select-String -Path $chunks.FullName -Pattern ('const version\s*=\s*"([^"]*)"') -AllMatches |
+                ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+              if ($baked -notcontains $ver) {
+                throw ("Renderer bundle version mismatch: expected $ver, found [$($baked -join ', ')]")
+              }
+              Write-Host "Renderer bundle carries version $ver"
+            }
+          }
           Write-Host "OK: $($exe.Name) = $($exe.Length) bytes; sha512 OK; $($bmap.Name); ProductVersion=$($verInfo.ProductVersion)"
 
       - name: Create draft release with assets
