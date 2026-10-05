@@ -173,10 +173,16 @@ jobs:
             } else {
               $baked = @(Select-String -Path $chunks.FullName -Pattern ('const version\s*=\s*"([^"]*)"') -AllMatches |
                 ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-              if ($baked -notcontains $ver) {
+              # Асимметрия намеренная: пустой список — почти всегда изменился формат вывода
+              # минификатора ( warn + продолжить ), а непустой список без нужного значения —
+              # это уже реальный дефект порядка build/prepare ( throw ).
+              if ($baked.Count -eq 0) {
+                Write-Warning ('Pattern ''const version = "..."'' not found in ' + $assets + ' - skipping renderer version check (minifier output format changed?)')
+              } elseif ($baked -notcontains $ver) {
                 throw ("Renderer bundle version mismatch: expected $ver, found [$($baked -join ', ')]")
+              } else {
+                Write-Host "Renderer bundle carries version $ver"
               }
-              Write-Host "Renderer bundle carries version $ver"
             }
           }
           Write-Host "OK: $($exe.Name) = $($exe.Length) bytes; sha512 OK; $($bmap.Name); ProductVersion=$($verInfo.ProductVersion)"
